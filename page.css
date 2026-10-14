@@ -1,0 +1,8 @@
+html.cr-focus :is([data-message-author-role="assistant"], [data-cr-role="assistant"]) { font-size: var(--cr-font-size, 16px) !important; line-height: var(--cr-line-height, 1.8) !important; }
+html.cr-focus :is([data-message-author-role="assistant"], [data-cr-role="assistant"]) :is(.markdown, .prose, p, li) { font-size: var(--cr-font-size, 16px) !important; line-height: var(--cr-line-height, 1.8) !important; }
+html.cr-focus :is([data-message-author-role="assistant"], [data-cr-role="assistant"]) pre { white-space: pre-wrap !important; overflow-wrap: anywhere; }
+html.cr-focus :is([data-message-author-role="assistant"], [data-cr-role="assistant"]) { max-width: var(--cr-reading-width, 820px) !important; }
+::highlight(cr-saved) { background: #fce8a6; color: #302d23; }
+::highlight(cr-search) { background: #dbeafe; color: #172554; }
+::highlight(cr-current-search) { background: #ffb477; color: #352417; }
+@media print { #chatgpt-reader-launcher { display:none!important; } }

@@ -1,0 +1,125 @@
+/* Shared by the isolated content script and the extension's print preview. */
+(() => {
+  'use strict';
+  const allowedTags = new Set(('p div span br hr h1 h2 h3 h4 h5 h6 strong b em i u s del blockquote pre code ul ol li table thead tbody tfoot tr th td caption a img figure figcaption details summary sub sup kbd mark math semantics annotation mrow mi mn mo mfrac msqrt mroot msub msup msubsup munder mover munderover mtext mspace mtable mtr mtd menclose mpadded mstyle').split(' '));
+  const allowedAttrs = new Set(('href src alt title colspan rowspan start class display mathvariant encoding stretchy fence separator accent accentunder columnalign rowalign columnspacing rowspacing width height depth notation').split(' '));
+  const safeUrl = value => {
+    try { const u = new URL(value, 'https://chatgpt.com'); return ['https:', 'http:'].includes(u.protocol) ? u.href : ''; } catch { return ''; }
+  };
+  function sanitizeHTML(html) {
+    const doc = new DOMParser().parseFromString(String(html), 'text/html');
+    doc.querySelectorAll('script,style,iframe,object,embed,form,input,textarea,button,select,svg,video,audio,canvas,.katex-html,[data-cr-owned]').forEach(n => n.remove());
+    // Prefer native MathML so equations remain readable without remote font assets.
+    doc.querySelectorAll('annotation').forEach(n => n.remove());
+    for (const el of [...doc.body.querySelectorAll('*')]) {
+      if (!allowedTags.has(el.localName)) { el.replaceWith(...el.childNodes); continue; }
+      for (const a of [...el.attributes]) {
+        if (!allowedAttrs.has(a.name)) el.removeAttribute(a.name);
+        else if (['href', 'src'].includes(a.name)) {
+          const url = safeUrl(a.value);
+          if (url) el.setAttribute(a.name, url); else el.removeAttribute(a.name);
+        } else if (a.name === 'class') {
+          el.setAttribute('class', a.value.split(/\s+/).filter(c => /^(katex|language-|math)/.test(c)).join(' '));
+        }
+      }
+      if (el.localName === 'a') { el.setAttribute('target', '_blank'); el.setAttribute('rel', 'noopener noreferrer'); }
+      if (el.localName === 'img') { el.setAttribute('loading', 'lazy'); el.setAttribute('referrerpolicy', 'no-referrer'); }
+    }
+    return doc.body.innerHTML;
+  }
+  function messageBody(node) { return node.matches('.markdown, .prose') ? node : node.querySelector('.markdown, [class*="markdown"], .prose') || node; }
+  const explicitRoles = {
+    assistant:'[data-message-author-role="assistant"], [data-author="assistant"], [data-role="assistant"], [data-message-type="assistant"], [data-testid="assistant-message"], [data-turn="assistant"]',
+    user:'[data-message-author-role="user"], [data-author="user"], [data-role="user"], [data-message-type="user"], [data-testid="user-message"], [data-turn="user"]'
+  };
+  const markerSelector='[data-message-author-role], [data-cr-role]';
+  let marked=new Set();
+  function labelRole(node) {
+    const text=node.textContent.trim().replace(/\s+/g,' ');
+    if (/^(?:ChatGPT\s*(?:说|said|says)?|Assistant)\s*[：:]?$/i.test(text)) return 'assistant';
+    if (/^(?:你说|您说|You said|You|用户|User)\s*[：:]?$/i.test(text)) return 'user';
+    return '';
+  }
+  function messageNodes() {
+    const roles=new Map();
+    const own=n=>Boolean(n.closest('[data-cr-owned]'));
+    for(const [role,selector] of Object.entries(explicitRoles)) for(const n of document.querySelectorAll(selector)) if(!own(n))roles.set(n,role);
+    const labels=[...document.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')].filter(n=>!own(n) && !n.closest('.markdown,.prose') && labelRole(n));
+    // Current and historical ChatGPT renderers may expose only an accessible
+    // speaker heading, without data-message-author-role.
+    for(const label of labels) {
+      const role=labelRole(label), nextLabel=labels.find(n=>label.compareDocumentPosition(n)&Node.DOCUMENT_POSITION_FOLLOWING);
+      const after=n=>Boolean(label.compareDocumentPosition(n)&Node.DOCUMENT_POSITION_FOLLOWING) && (!nextLabel || Boolean(n.compareDocumentPosition(nextLabel)&Node.DOCUMENT_POSITION_FOLLOWING));
+      let parent=label, found=null;
+      for(let depth=0;depth<6 && parent && parent!==document.body && !found;depth++,parent=parent.parentElement) {
+        const selector=role==='assistant'?'.markdown,.prose,[data-testid="assistant-message"]':'[data-testid="user-message"],.whitespace-pre-wrap,.user-message';
+        found=[...parent.querySelectorAll(selector)].find(n=>after(n) && !own(n) && (!nextLabel || !n.contains(nextLabel)));
+        if(!found) for(let sibling=parent.nextElementSibling;sibling;sibling=sibling.nextElementSibling) {
+          if(nextLabel && (sibling===nextLabel || sibling.contains(nextLabel)))break;
+          if(!after(sibling) || own(sibling))continue;
+          const rich=sibling.matches(selector)?sibling:sibling.querySelector(selector);
+          if(rich){found=rich;break;}
+          if(!sibling.matches('button,script,style') && (sibling.querySelector('p,h1,h2,h3,pre,table,math') || (role==='user' && sibling.textContent.trim()))) {found=sibling;break;}
+        }
+      }
+      if(found && ![...roles].some(([n])=>n.contains(found)))roles.set(found,role);
+    }
+    // Legacy markdown-only replies remain readable even without a speaker label.
+    for(const n of document.querySelectorAll('.markdown,.prose')) {
+      if(own(n) || n.closest(explicitRoles.user) || [...roles].some(([p])=>p.contains(n) || n.contains(p)))continue;
+      roles.set(n,'assistant');
+    }
+    const nodes=[...roles.keys()].filter(n=>![...roles.keys()].some(p=>p!==n && p.contains(n)));
+    const current=new Set(nodes);
+    for(const n of marked)if(!current.has(n))delete n.dataset.crRole;
+    for(const n of nodes)n.dataset.crRole=roles.get(n);
+    marked=current;
+    return nodes.sort((a,b)=>a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING?-1:1);
+  }
+  function roleOf(node) { return node.dataset.crRole || node.dataset.messageAuthorRole || ''; }
+  function assistantNodes() { return messageNodes().filter(n=>roleOf(n)==='assistant'); }
+  function userNodes() { return messageNodes().filter(n=>roleOf(n)==='user'); }
+  function closestMessage(node,role) { const n=node.closest(markerSelector); return n && (!role || roleOf(n)===role)?n:null; }
+  function messageId(node, index) {
+    const turn=node.closest('[data-message-id],[data-turn-id],[data-testid^="conversation-turn-"]');
+    const stable=node.dataset.messageId || turn?.dataset.messageId || turn?.dataset.turnId || turn?.dataset.testid;
+    if(stable)return stable;
+    const text=messageBody(node).textContent.trim().replace(/\s+/g,' ').slice(0,160);
+    let hash=2166136261;for(let i=0;i<text.length;i++){hash^=text.charCodeAt(i);hash=Math.imul(hash,16777619);}
+    return text?`message-${(hash>>>0).toString(36)}`:`answer-${index}`;
+  }
+  function outline(node) {
+    const body = messageBody(node);
+    const headings = [...body.querySelectorAll('h1,h2,h3,h4,h5,h6')].filter(n => n.textContent.trim());
+    if (headings.length) return headings.map(n => ({node:n, text:n.textContent.trim(), level:Number(n.localName[1])}));
+    const bold = [...body.querySelectorAll('p > strong:first-child, li > strong:first-child')].filter(n => n.textContent.trim().length <= 80);
+    if (bold.length >= 2) return bold.slice(0, 40).map(n => ({node:n, text:n.textContent.trim(), level:2}));
+    return [...body.querySelectorAll('p,pre,table,ul,ol,blockquote')].filter(n => !n.parentElement.closest('pre,table,ul,ol,blockquote') && n.textContent.trim()).slice(0, 30).map((n,i) => ({node:n, text:`${i + 1}. ${n.textContent.trim().replace(/\s+/g,' ').slice(0,54)}`, level:2}));
+  }
+  function markdown(node) {
+    const doc = new DOMParser().parseFromString(sanitizeHTML(messageBody(node).innerHTML), 'text/html');
+    const inline = el => [...el.childNodes].map(walk).join('');
+    function walk(n) {
+      if (n.nodeType === Node.TEXT_NODE) return n.textContent;
+      if (n.nodeType !== Node.ELEMENT_NODE) return '';
+      const text = inline(n), tag = n.localName;
+      if (/^h[1-6]$/.test(tag)) return `\n${'#'.repeat(Number(tag[1]))} ${text}\n\n`;
+      if (tag === 'pre') { const code=n.querySelector('code'); const language=code?.className.match(/language-([\w-]+)/)?.[1] || ''; const raw=(code || n).textContent; const fence='`'.repeat(Math.max(3, ...[...raw.matchAll(/`+/g)].map(m => m[0].length + 1))); return `\n${fence}${language}\n${raw}\n${fence}\n\n`; }
+      if (tag === 'code' && n.parentElement.localName !== 'pre') return `\`${text}\``;
+      if (tag === 'strong' || tag === 'b') return `**${text}**`;
+      if (tag === 'em' || tag === 'i') return `*${text}*`;
+      if (tag === 'a') return `[${text}](${n.getAttribute('href') || ''})`;
+      if (tag === 'img') return `![${n.getAttribute('alt') || ''}](${n.getAttribute('src') || ''})`;
+      if (tag === 'blockquote') return `\n${text.trim().split('\n').map(t => '> '+t).join('\n')}\n\n`;
+      if (tag === 'li') { const ordered=n.parentElement.localName === 'ol'; const i=[...n.parentElement.children].indexOf(n)+Number(n.parentElement.getAttribute('start') || 1); return `${ordered ? i+'.' : '-'} ${text.trim()}\n`; }
+      if (tag === 'table') { const rows=[...n.querySelectorAll('tr')].map(r => [...r.children].map(c => c.textContent.replace(/\|/g,'\\|').replace(/\s+/g,' ').trim())); if (!rows.length) return ''; return '\n| '+rows[0].join(' | ')+' |\n| '+rows[0].map(()=>'---').join(' | ')+' |\n'+rows.slice(1).map(r=>'| '+r.join(' | ')+' |').join('\n')+'\n\n'; }
+      if (tag === 'math') return n.outerHTML;
+      if (['p','ul','ol','div','figure','details'].includes(tag)) return text+'\n\n';
+      if (tag === 'br') return '\n';
+      if (tag === 'hr') return '\n---\n';
+      return text;
+    }
+    return inline(doc.body).replace(/\n{3,}/g,'\n\n').trim();
+  }
+  window.ChatGPTReader = {sanitizeHTML, safeUrl, messageBody, messageNodes, roleOf, assistantNodes, userNodes, closestMessage, messageId, outline, markdown};
+})();
