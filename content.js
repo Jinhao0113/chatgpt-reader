@@ -381,26 +381,54 @@
     if(user?.role==='user')user.id=`user-${message.id}`;
     await sendRequest(message);
   }
-  function exportEntries(scope) {
-    if(scope==='side')return state.messages.filter(x=>x.text||x.html).map(x=>({role:x.role==='user'?'侧边提问':'侧边回答',html:x.html ? R.sanitizeHTML(x.html):`<p>${escapeHTML(x.text).replace(/\n/g,'<br>')}</p>`,text:x.text || ''}));
-    const nodes=scope==='all' ? R.messageNodes() : (state.active?[state.active]:[]);
-    return nodes.map(n=>({role:R.roleOf(n)==='user'?'你':'ChatGPT',html:R.sanitizeHTML(R.messageBody(n).innerHTML),text:R.markdown(n)}));
+  async function exportEntries(scope,format) {
+    if(scope==='side'){
+      const assets=[],entries=state.messages.filter(x=>x.text||x.html).map(x=>{
+        const html=x.html ? R.sanitizeHTML(x.html):`<p>${escapeHTML(x.text).replace(/\n/g,'<br>')}</p>`;
+        const doc=new DOMParser().parseFromString(html,'text/html');
+        if(format==='markdown')for(const el of doc.querySelectorAll('svg,img[src^="data:image/png;base64,"]')){
+          const svg=el.localName==='svg',name=`assets/chart-${String(assets.length+1).padStart(3,'0')}.${svg?'svg':'png'}`;
+          assets.push({name,type:svg?'svg':'png',content:svg?new XMLSerializer().serializeToString(el):el.src.split(',')[1]});el.dataset.crAsset=name;
+        }
+        return {role:x.role==='user'?'侧边提问':'侧边回答',html:doc.body.innerHTML,text:R.markdownHTML(doc.body.innerHTML)};
+      });
+      return{entries,assets,warnings:[]};
+    }
+    if(N){
+      const result=await N.rpc({type:'CR_NATIVE_EXPORT',scope:scope==='all'?'all':'current',format,sourceKey:state.sourceKey,messageId:state.active?R.messageId(state.active,state.answers.indexOf(state.active)):''});
+      if(!result.ok)throw new Error(result.error || '无法读取原回答，请刷新网页后重试');
+      return result.data;
+    }
+    return{entries:[],assets:[],warnings:[]};
   }
   function escapeHTML(text) { const n=document.createElement('span');n.textContent=text;return n.innerHTML; }
   function download(text,name,type='text/markdown;charset=utf-8') { const url=URL.createObjectURL(new Blob([text],{type})), a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000); }
   const title=()=>(N?N.title:document.title).replace(/\s*[-|·]\s*ChatGPT\s*$/i,'').slice(0,100) || 'ChatGPT 对话';
   const filename=()=>title().replace(/[\\/:*?"<>|]/g,'-');
-  async function exportPDF(scope) {
-    const entries=exportEntries(typeof scope==='string'?scope:$('.export-scope').value);
-    if(!entries.length){toast('还没有可导出的回答');return;}
-    const result=await rpc({type:'CR_PRINT',data:{title:title(),source:sourceURL(),created:new Date().toISOString(),entries}});
-    if(!result.ok)toast(result.error || '无法打开 PDF 预览');
+  let exporting=false;
+  async function runExport(format,scope=$('.export-scope').value) {
+    if(exporting)return;
+    exporting=true;$('.export-pdf').disabled=true;$('.export-md').disabled=true;
+    try{
+      const {entries,assets,warnings}=await exportEntries(scope,format);
+      if(!entries.length){toast('还没有可导出的回答');return;}
+      if(format==='pdf'){
+        const result=await rpc({type:'CR_PRINT',data:{title:title(),source:sourceURL(),created:new Date().toISOString(),entries,warnings}});
+        if(!result.ok)throw new Error(result.error || '无法打开 PDF 预览');
+      }else{
+        const notes=warnings.length?`> ${warnings.join('\n> ')}\n\n`:'';
+        const text=`# ${title()}\n\n来源：${sourceURL()}\n\n${notes}${entries.map(e=>`## ${e.role}\n\n${e.text}`).join('\n\n---\n\n')}\n`;
+        if(assets.length){
+          const files=[{name:`${filename()}.md`,data:text},...assets.map(a=>({name:a.name,data:a.type==='png'?Uint8Array.from(atob(a.content),c=>c.charCodeAt(0)):a.content}))];
+          download(R.zip(files),`${filename()}-Markdown.zip`,'application/zip');toast('已下载 Markdown 和图示，解压后打开 .md 文件');
+        }else download(text,`${filename()}.md`);
+        if(warnings.length)toast('导出已完成，文件中附有未能导出内容的说明');
+      }
+    }catch(e){toast(e.message || '导出失败，请重新连接网页');}
+    finally{exporting=false;$('.export-pdf').disabled=false;$('.export-md').disabled=false;}
   }
-  function exportMarkdown() {
-    const entries=exportEntries($('.export-scope').value);
-    if(!entries.length){toast('还没有可导出的回答');return;}
-    download(`# ${title()}\n\n来源：${sourceURL()}\n\n${entries.map(e=>`## ${e.role}\n\n${e.text}`).join('\n\n---\n\n')}\n`,`${filename()}.md`);
-  }
+  function exportPDF(scope){return runExport('pdf',typeof scope==='string'?scope:$('.export-scope').value);}
+  function exportMarkdown(){return runExport('markdown');}
   $('.dock').onclick=()=>setOpen(true);$('.close').onclick=()=>{setOpen(false);$('.dock').focus();};
   $$('.tab').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
   $('.tabs').addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const tabs=$$('.tab'),i=tabs.findIndex(t=>t.dataset.tab===state.tab),next=e.key==='Home'?0:e.key==='End'?tabs.length-1:(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;switchTab(tabs[next].dataset.tab);tabs[next].focus();});

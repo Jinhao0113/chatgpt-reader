@@ -1,4 +1,4 @@
-# 1.3.1 追问界面与原生侧栏验证
+# 1.4.0 Intelligent UI 导出与原生侧栏验证
 
 2026-10-14，在 Chromium 151.0.7922.34 中加载实际 Manifest V3 扩展、service worker 和网页脚本。测试使用临时浏览器配置与模拟 ChatGPT 页面，不访问用户账号或提交真实问题。
 
@@ -54,6 +54,25 @@
 
 更新用户已经安装的扩展到 1.2.1，重新加载扩展与原网页后，侧栏仍保留原 Krylov 问题，旧错误只显示一次并提供「重试此问题」。点击重试成功在独立后台 ChatGPT 标签页提交，侧栏显示真实回答内容，最后状态为「回答已完成」。这项实际验证没有使用 API Key 或私有接口。未把账号标识、原聊天全文或登录数据写入交付包。
 
+## Intelligent UI 验证（1.4.0）
+
+在登录页面的元素检查器中确认当前原生渲染结构：`data-markdown-text-style="assistant-message"`、`data-chatgpt-selection-message-id`、`data-dil-source-message-id`、`data-dil-message-id` 及 `data-d-component`。图示在主页面 DOM 中；隐藏的 `DIL execution sandbox` 仅用于运行组件，不是待导出的图表内容。此次适配没有新增站点权限。
+
+新增 `tests/rich-export.cjs` 的 11 项检查，加上原有 27 项，共 38 项通过。使用上述结构的合成回答，并通过真实扩展消息测试：
+
+- 普通 Markdown 与多个 Intelligent UI 片段合并为一个稳定消息。
+- PDF 保留卡片、SVG、Canvas、表格、MathML 和当前参数，而非初始 HTML 属性值。
+- 深色背景、曲线颜色、渐变和卡片布局保留；内容宽度不超出页面。
+- 带图 Markdown 下载 ZIP，内含 SVG 和 Canvas PNG。
+- 完成的侧边回答同步图示，支持 PDF 与带图 Markdown 导出。
+- 原聊天切换后拒绝过期导出请求。
+- 无法读取的嵌入内容附有说明；隐藏执行沙箱不导出。
+- SVG 脚本、远程引用和危险样式被移除。
+- 多次 HTML 清理保持边框、圆角和 flex 方向。
+- 同一文件中的重复图表使用独立定义 ID。
+
+另以 Python zipfile 验证下载包 CRC、UTF-8 文件名和相对图示链接，解析 SVG XML 并检查 PNG 签名。A4 PDF 经过 Poppler 渲染，检查各页图表、参数、表格、公式和文字是否可读。合成数据的预览图位于交付目录；实际用户聊天不进入测试源码或安装包。
+
 ## 开发者复跑
 
 安装使用不需要 npm。修改后在扩展目录运行：
@@ -78,3 +97,7 @@ npm test
 用新版覆盖原加载文件夹，刷新扩展，再刷新 ChatGPT 页面。打开浏览器原生侧栏后，确认正文和输入框重新排版，网页右侧与侧栏分界线相接；切换四个标签时分界线保持不动。选择历史回答文字测试定位、收藏和侧边提问。此前收藏和侧栏记录使用原存储键保留。
 
 ChatGPT 的消息结构仍可能随网页改版变化，消息提取与后台输入适配分别位于 shared.js、page-agent.js 和 bridge.js。原生侧栏的空间分配由浏览器管理，不依赖 ChatGPT 消息 DOM 结构。
+
+## 已安装版本的实际导出检查（1.4.0）
+
+已更新 `/Users/jinhao/Downloads/chatgpt-reader`，在 Chrome 重新加载后确认版本 1.4.0。刷新原 ChatGPT 页面，原生侧栏识别到三条历史回答，其中包含当前 Intelligent UI 回答。点击「导出 PDF」成功打开预览，显示完整标题目录、原对话来源、静态状态说明和可用的保存按钮。没有新增站点权限，没有发送新问题；实际聊天不写入发布包。

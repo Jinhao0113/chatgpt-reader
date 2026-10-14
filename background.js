@@ -52,7 +52,8 @@ async function handle(m, sender) {
       try{const result=await chrome.tabs.sendMessage(tab.id,{type:'CR_NATIVE_COLLECT'}),key=`readerQuote:${tab.id}`,quote=(await chrome.storage.session.get(key))[key];if(quote)await chrome.storage.session.remove(key);return{ok:true,tabId:tab.id,data:result.data,quote};}catch{return{ok:false,tabId:tab.id,error:'请刷新 ChatGPT 网页，让新版扩展连接到页面'};}
     }
     if(m.type==='CR_NATIVE_QUOTE_ACK'){await chrome.storage.session.remove(`readerQuote:${tab.id}`);return{ok:true};}
-    if(['CR_NATIVE_JUMP','CR_NATIVE_SEARCH'].includes(m.type)){
+    if(['CR_NATIVE_JUMP','CR_NATIVE_SEARCH','CR_NATIVE_EXPORT'].includes(m.type)){
+      if(m.type==='CR_NATIVE_EXPORT' && (m.sourceKey!==new URL(tab.url).pathname || !['current','all'].includes(m.scope) || !['pdf','markdown'].includes(m.format)))return{ok:false,error:'原对话已切换，请刷新目录后重新导出'};
       try{return await chrome.tabs.sendMessage(tab.id,m);}catch{return{ok:false,error:'原网页连接已断开，请刷新网页'};}
     }
     if(m.type==='CR_NATIVE_CLOSE'){

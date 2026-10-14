@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Reader",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "description": "为 ChatGPT 添加实时回答目录、选文侧边提问、PDF 排版、搜索与段落收藏。",
   "minimum_chrome_version": "120",
   "permissions": [
@@ -38,6 +38,7 @@
       ],
       "js": [
         "shared.js",
+        "rich-export.js",
         "bridge.js",
         "page-agent.js"
       ],

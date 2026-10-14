@@ -50,6 +50,16 @@
   $('.ask').onclick=async()=>{if(!selected)return;if(selected.text.length>12000){toast('选文过长，请缩小选区');return;}const nodes=R.assistantNodes(),result=await rpc({type:'CR_NATIVE_QUOTE',data:{text:selected.text,messageId:R.messageId(selected.node,nodes.indexOf(selected.node))}});$('.menu').hidden=true;if(!result.ok)toast(result.error);};
   $('.save').onclick=async()=>{if(!selected)return;if(selected.text.length>12000){toast('请收藏少于 12,000 字的段落');return;}const {text,node}=selected,index=R.assistantNodes().indexOf(node),answerId=R.messageId(node,index),key=`readerDoc:${location.pathname}`,saved=(await chrome.storage.local.get(key))[key] || {messages:[],bookmarks:[]};saved.bookmarks ||= [];if(!saved.bookmarks.some(b=>b.quote===text&&b.answerId===answerId))saved.bookmarks.push({id:crypto.randomUUID(),quote:text,answerId,index,created:Date.now()});await chrome.storage.local.set({[key]:saved});$('.menu').hidden=true;await highlights();toast('已收藏，可在阅读侧栏查看');};
   chrome.runtime.onMessage.addListener((m,sender,reply)=>{
+    if(m.type==='CR_NATIVE_EXPORT'){
+      try{
+        if(m.sourceKey!==location.pathname)throw new Error('原对话已切换，请刷新目录后重新导出');
+        const nodes=m.scope==='all'?R.messageNodes():[target(m.messageId)].filter(Boolean),assets=[],warnings=[];
+        if(generating())warnings.push('回答仍在生成，此文件保存的是当前已显示的内容。');
+        const entries=nodes.map(n=>R.exportMessage(n,{format:m.format,assets,warnings}));
+        const data={entries,assets,warnings};if(JSON.stringify(data).length>5500000)throw new Error('导出内容过大，请选择当前回答或减少已加载的消息');
+        reply({ok:true,data});
+      }catch(e){reply({ok:false,error:e.message || '无法读取可视化内容，请刷新原网页后重试'});}
+    }
     if(m.type==='CR_NATIVE_COLLECT'){subscribed=true;reply({ok:true,data:snapshot()});}
     if(m.type==='CR_NATIVE_SUBSCRIBE'){subscribed=true;lastSnapshot='';void publish();reply({ok:true});}
     if(m.type==='CR_NATIVE_UNSUBSCRIBE'){subscribed=false;reply({ok:true});}

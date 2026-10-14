@@ -52,6 +52,14 @@
   async function update(job, status, extra={}) {
     try { await chrome.runtime.sendMessage({type:'CR_BRIDGE_UPDATE',id:job.id,status,...extra}); } catch {}
   }
+  function completedHTML(node,fallback) {
+    if(!node)return R.sanitizeHTML(fallback || '');
+    try {
+      const html=R.exportMessage(node,{format:'pdf'}).html;
+      if(html.length<1500000)return html;
+    }catch{}
+    return R.sanitizeHTML(fallback || '')+'<p class="cr-export-notice">此回答的部分图示未能同步，请从后台原对话导出。</p>';
+  }
   async function run(job) {
     if (!job || bridge.job?.id===job.id) return;
     activate();
@@ -130,7 +138,7 @@
               const complete=Boolean(node?.querySelector('[data-testid="copy-turn-action-button"]') || node?.closest('article')?.querySelector('[data-testid="copy-turn-action-button"]'));
               if (complete || sawStop || (button && !button.disabled)) {
                 if (!settlingAt) settlingAt=Date.now();
-                if (Date.now()-settlingAt>1500) { await update(current,'done',{html:R.sanitizeHTML(lastHTML),text:lastText}); resolve(); return; }
+                if (Date.now()-settlingAt>1500) { await update(current,'done',{html:completedHTML(node,lastHTML),text:lastText}); resolve(); return; }
               }
             }
             if (!accepted && Date.now()-started>14000) throw new Error('网页没有确认发送。请打开后台对话检查；不会自动重复提交问题。');
@@ -152,7 +160,7 @@
       const job=bridge.job; job.cancelled=true;
       stopButton()?.click();
       const body=job.response; const text=body ? R.messageBody(body).innerText : '';
-      void update(job,'stopped',{text,html:body ? R.sanitizeHTML(R.messageBody(body).innerHTML) : ''}); reply({ok:true});
+      void update(job,'stopped',{text,html:completedHTML(body,body ? R.messageBody(body).innerHTML : '')}); reply({ok:true});
     }
     if (m.type==='CR_BRIDGE_DETACH') { bridge.active=false; document.documentElement.classList.remove('cr-bridge'); document.dispatchEvent(new Event('cr-bridge-detached')); reply({ok:true}); }
   });

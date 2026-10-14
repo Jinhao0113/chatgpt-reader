@@ -14,11 +14,13 @@
     const response=await chrome.runtime.sendMessage({type:'CR_PRINT_GET',id});
     const data=response?.data;if(!data)throw new Error('预览已过期，请返回 ChatGPT 重新导出。');
     const main=document.getElementById('document');main.replaceChildren();document.title=data.title+' · ChatGPT';
-    const brand=document.createElement('div');brand.className='brand';brand.textContent='阅 / CHATGPT READER';
+    const brand=document.createElement('div');brand.className='brand';brand.textContent='CHATGPT READER';
     const title=document.createElement('h1');title.className='document-title';title.textContent=data.title;
     const meta=document.createElement('div');meta.className='meta';
     const source=document.createElement('a');source.href=window.ChatGPTReader.safeUrl(data.source);source.textContent=data.source;source.target='_blank';source.rel='noopener noreferrer';
     meta.append(document.createTextNode('导出于 '+new Date(data.created).toLocaleString()),document.createElement('br'),source);main.append(brand,title,meta);
+    if(data.entries.some(e=>e.html.includes('cr-export-ui') || e.html.includes('cr-export-chart'))){const note=document.createElement('p');note.className='export-note';note.textContent='图表与控件保存为导出时的静态状态。';main.append(note);}
+    if(Array.isArray(data.warnings))for(const warning of data.warnings){const note=document.createElement('p');note.className='cr-export-notice';note.textContent=String(warning);main.append(note);}
     const toc=document.createElement('nav');toc.className='toc';toc.setAttribute('aria-label','文档目录');const label=document.createElement('div');label.className='toc-title';label.textContent='内容目录';const list=document.createElement('ol');toc.append(label,list);main.append(toc);
     let headingCount=0;
     for(const [i,entry] of data.entries.entries()) {
