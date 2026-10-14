@@ -310,6 +310,7 @@
       const role=document.createElement('div');role.className='message-role';role.textContent=message.role==='user'?'你':'CHATGPT';
       const body=document.createElement('div');body.className='rich';
       if(message.role==='assistant' && message.html) body.innerHTML=R.sanitizeHTML(message.html); else body.textContent=(message.role==='user'?message.question:undefined) ?? (message.text || (waiting?'正在思考…':''));
+      if(message.role==='assistant' && message.html)R.fitMedia(body);
       if(message.role==='user' && message.quote) {
         const quote=document.createElement('details');quote.className='message-quote';
         const summary=document.createElement('summary');summary.textContent='引用的原文';
@@ -386,7 +387,9 @@
       const assets=[],entries=state.messages.filter(x=>x.text||x.html).map(x=>{
         const html=x.html ? R.sanitizeHTML(x.html):`<p>${escapeHTML(x.text).replace(/\n/g,'<br>')}</p>`;
         const doc=new DOMParser().parseFromString(html,'text/html');
+        R.fitMedia(doc.body);
         if(format==='markdown')for(const el of doc.querySelectorAll('svg,img[src^="data:image/png;base64,"]')){
+          if(el.dataset.crMedia==='icon')continue;
           const svg=el.localName==='svg',name=`assets/chart-${String(assets.length+1).padStart(3,'0')}.${svg?'svg':'png'}`;
           assets.push({name,type:svg?'svg':'png',content:svg?new XMLSerializer().serializeToString(el):el.src.split(',')[1]});el.dataset.crAsset=name;
         }

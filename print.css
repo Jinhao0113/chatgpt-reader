@@ -10,7 +10,10 @@ main { background:#fff; max-width:210mm; margin:28px auto; padding:20mm 18mm; bo
 @media(max-width:750px) { .toolbar { padding:12px; } .toolbar span { display:block; margin:5px 0 0; } main { margin:14px 10px; padding:20px; } }
 .content .cr-export-ui { overflow-wrap:anywhere; margin:12px 0; min-width:0; }
 .content .cr-export-ui * { min-width:0; max-width:100%; }
-.content .cr-export-chart { display:block; width:100%; height:auto; max-height:210mm; break-inside:avoid; margin:10px 0; }
+.content .cr-export-chart,.content .cr-export-image { display:block; width:auto; height:auto; max-width:100%; max-height:160mm; object-fit:contain; break-inside:avoid; margin:12px auto; }
+.content .cr-export-icon { display:inline-block; width:24px; height:24px; flex:none; vertical-align:middle; margin:0; }
+.content .cr-export-icon-box { vertical-align:middle; }
+.content .cr-export-media-frame { break-inside:avoid; }
 .content svg.cr-export-chart { overflow:visible; }
 .content .cr-export-control { display:inline-block; white-space:pre-wrap; padding:5px 9px; margin:3px; border:1px solid #8886; border-radius:6px; font-size:.9em; }
 .cr-export-notice,.export-note { font-size:11px; line-height:1.7; padding:10px 12px; border:1px solid #ddd; background:#f7f7f7; color:#525252; border-radius:6px; }

@@ -7,7 +7,7 @@
     try {
       // Avoid waiting forever on unavailable images from the original answer.
       await Promise.race([Promise.all([...document.images].map(img=>img.complete?Promise.resolve():new Promise(resolve=>{img.addEventListener('load',resolve,{once:true});img.addEventListener('error',resolve,{once:true});}))),new Promise(r=>setTimeout(r,4000))]);
-      await document.fonts.ready;window.print();
+      await document.fonts.ready;window.ChatGPTReader.fitMedia(document.getElementById('document'));window.print();
     } finally {button.disabled=false;}
   });
   try {
@@ -28,6 +28,7 @@
       const role=document.createElement('div');role.className='role';role.textContent=entry.role;
       const content=document.createElement('div');content.className='content';content.innerHTML=window.ChatGPTReader.sanitizeHTML(entry.html);
       content.querySelectorAll('img').forEach(img=>img.loading='eager');
+      window.ChatGPTReader.fitMedia(content);
       article.append(role,content);main.append(article);
       const headings=[...content.querySelectorAll('h1,h2,h3')];
       for(const h of headings) {h.id=`heading-${headingCount++}`;const li=document.createElement('li'),a=document.createElement('a');a.href='#'+h.id;a.textContent=h.textContent;li.append(a);list.append(li);}

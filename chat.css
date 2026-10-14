@@ -87,5 +87,6 @@
 @media(prefers-reduced-motion:reduce) { .message.waiting .rich::before { animation:none; } }
 .message .cr-export-ui { border-radius:12px; overflow-wrap:anywhere; }
 .message .cr-export-ui * { min-width:0; max-width:100%; }
-.message .cr-export-chart { display:block; max-width:100%; height:auto; margin:10px 0; }
+.message .cr-export-chart,.message .cr-export-image { display:block; max-width:100%; height:auto; object-fit:contain; margin:12px auto; }
+.message .cr-export-icon { display:inline-block; width:24px; height:24px; flex:none; vertical-align:middle; margin:0; }
 .message .cr-export-control { display:inline-block; padding:4px 8px; margin:3px; border:1px solid var(--line); border-radius:6px; }

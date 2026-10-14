@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const allowedTags = new Set(('p div section span br hr h1 h2 h3 h4 h5 h6 strong b em i u s del blockquote pre code ul ol li table thead tbody tfoot tr th td caption a img figure figcaption details summary sub sup kbd mark math semantics annotation mrow mi mn mo mfrac msqrt mroot msub msup msubsup munder mover munderover mtext mspace mtable mtr mtd menclose mpadded mstyle').split(' '));
-  const allowedAttrs = new Set(('href src alt title colspan rowspan start class display mathvariant encoding stretchy fence separator accent accentunder columnalign rowalign columnspacing rowspacing width height depth notation style open data-cr-asset data-cr-ui').split(' '));
+  const allowedAttrs = new Set(('href src alt title colspan rowspan start class display mathvariant encoding stretchy fence separator accent accentunder columnalign rowalign columnspacing rowspacing width height depth notation style open data-cr-asset data-cr-ui data-cr-media data-cr-media-width data-cr-media-height').split(' '));
   const svgTags = new Set('svg g path rect circle ellipse line polyline polygon text tspan title desc defs lineargradient radialgradient stop clippath mask pattern marker use symbol foreignobject'.split(' '));
   const svgAttrs = new Set('viewbox xmlns xmlns:xlink x y x1 y1 x2 y2 cx cy r rx ry d points fill fill-opacity fill-rule stroke stroke-width stroke-opacity stroke-linecap stroke-linejoin stroke-dasharray stroke-dashoffset opacity transform gradienttransform gradientunits offset stop-color stop-opacity clippathunits clip-path mask maskunits patternunits patterntransform marker-start marker-mid marker-end markerwidth markerheight refx refy orient text-anchor dominant-baseline font-size font-family font-weight id href xlink:href preserveaspectratio vector-effect'.split(' '));
   const styleProps = new Set('color background-color display flex-direction flex-wrap flex-grow flex-shrink flex-basis justify-content align-items align-content align-self gap row-gap column-gap grid-template-columns grid-column grid-row padding padding-top padding-right padding-bottom padding-left margin margin-top margin-right margin-bottom margin-left border border-top border-right border-bottom border-left border-radius border-color border-style border-width font-size font-weight font-style font-family line-height letter-spacing text-align text-decoration white-space vertical-align aspect-ratio width height max-width max-height min-width min-height fill stroke stroke-width opacity'.split(' '));
@@ -34,6 +34,8 @@
         if (!(allowedAttrs.has(name) || (isSVG && svgAttrs.has(name)))) el.removeAttribute(a.name);
         else if(name==='style') {const safe=safeStyle(a.value);if(safe)el.setAttribute('style',safe);else el.removeAttribute(a.name);}
         else if(name==='data-cr-asset' && !assetPath(a.value))el.removeAttribute(a.name);
+        else if(name==='data-cr-media' && !['icon','figure','image'].includes(a.value))el.removeAttribute(a.name);
+        else if(/^data-cr-media-(width|height)$/.test(name) && !positiveSize(a.value))el.removeAttribute(a.name);
         else if(isSVG && ['href','xlink:href'].includes(name)){if(!/^#[\w:.-]+$/.test(a.value))el.removeAttribute(a.name);}
         else if(isSVG && /url\s*\(/i.test(a.value) && !/^url\(["']?#[\w:.-]+["']?\)$/.test(a.value))el.removeAttribute(a.name);
         else if (['href', 'src'].includes(a.name)) {
@@ -47,6 +49,66 @@
       if (el.localName === 'img') { el.setAttribute('loading', 'lazy'); el.setAttribute('referrerpolicy', 'no-referrer'); }
     }
     return doc.body.innerHTML;
+  }
+  const positiveSize=value=>{const n=Number(value);return Number.isFinite(n) && n>0 && n<=32768?n:0;};
+  function mediaDimensions(node) {
+    const view=node.localName==='svg'?node.viewBox?.baseVal:null;
+    if(view?.width>0 && view.height>0)return{width:view.width,height:view.height};
+    const width=positiveSize(node.naturalWidth) || positiveSize(node.getAttribute('data-cr-media-width')) || positiveSize(node.getAttribute('width'));
+    const height=positiveSize(node.naturalHeight) || positiveSize(node.getAttribute('data-cr-media-height')) || positiveSize(node.getAttribute('height'));
+    return{width,height};
+  }
+  function mediaKind(node) {
+    if(['icon','figure','image'].includes(node.dataset.crMedia))return node.dataset.crMedia;
+    if(node.localName==='canvas')return 'figure';
+    if(node.localName==='svg'){
+      if(node.closest('[data-d-component="icon"]') || node.classList.contains('cr-export-icon'))return 'icon';
+      const size=mediaDimensions(node),box=node.getBoundingClientRect(),labels=node.querySelector('text,foreignObject'),simple=node.querySelectorAll('path,rect,circle,ellipse,line,polyline,polygon,use').length<=12;
+      // A 24-unit glyph stays a glyph even when old export CSS stretched it.
+      if(!labels && simple && ((size.width>0 && size.height>0 && Math.max(size.width,size.height)<=64) || (box.width>0 && box.height>0 && Math.max(box.width,box.height)<=48)))return 'icon';
+      return 'figure';
+    }
+    const size=mediaDimensions(node);
+    return size.width>0 && size.height>0 && Math.max(size.width,size.height)<=48?'icon':'image';
+  }
+  function sizeMedia(target,source=target) {
+    const kind=mediaKind(source),size=mediaDimensions(source),box=source.getBoundingClientRect();
+    const savedWidth=positiveSize(source.getAttribute('data-cr-media-width'));
+    let width=savedWidth || positiveSize(box.width) || size.width;
+    const ratio=size.width && size.height?size.width/size.height:box.width && box.height?box.width/box.height:0;
+    target.classList.remove('cr-export-chart','cr-export-image','cr-export-icon');
+    target.classList.add(kind==='icon'?'cr-export-icon':kind==='figure'?'cr-export-chart':'cr-export-image');
+    target.dataset.crMedia=kind;
+    target.style.flexGrow='0';target.style.flexShrink=kind==='icon'?'0':'1';target.style.flexBasis='auto';
+    if(kind==='icon'){
+      width=Math.min(40,savedWidth || (box.width>0 && box.width<=64?box.width:0) || size.width || width || 24);
+      const height=Math.min(40,ratio?width/ratio:width);
+      target.style.width=`${width}px`;target.style.height=`${height}px`;target.style.maxWidth='none';target.style.maxHeight='none';target.style.margin='0';target.style.verticalAlign='middle';target.style.backgroundColor='transparent';target.removeAttribute('data-cr-asset');
+      target.dataset.crMediaWidth=String(width);target.dataset.crMediaHeight=String(height);
+    }else{
+      // Cap both dimensions through width, so portrait graphics keep their ratio
+      // rather than being squeezed or cropped by max-height alone.
+      if(width){target.dataset.crMediaWidth=String(width);if(ratio)target.dataset.crMediaHeight=String(width/ratio);width=Math.min(width,ratio?160*96/25.4*ratio:width);target.style.width=`min(100%, ${Math.round(width*100)/100}px)`;}
+      else target.style.width='auto';
+      target.style.height='auto';target.style.maxWidth='100%';target.style.maxHeight='160mm';target.style.margin='12px auto';
+      if(ratio)target.style.aspectRatio=String(ratio);
+    }
+    return kind;
+  }
+  function fitMedia(root) {
+    for(const media of root.querySelectorAll('svg,img')){
+      if(media.parentElement.closest('svg'))continue;
+      sizeMedia(media);
+      if(media.localName==='img' && !media.complete)media.addEventListener('load',()=>sizeMedia(media),{once:true});
+      const parent=media.parentElement;
+      if(!parent.matches('div,span,figure') || parent.children.length!==1 || [...parent.childNodes].some(n=>n.nodeType===Node.TEXT_NODE && n.textContent.trim()))continue;
+      parent.style.aspectRatio='auto';parent.style.height='auto';parent.style.minHeight='0';
+      if(media.dataset.crMedia==='icon'){
+        parent.classList.add('cr-export-icon-box');parent.style.width=media.style.width;parent.style.height=media.style.height;parent.style.flexGrow='0';parent.style.flexShrink='0';parent.style.display='inline-flex';parent.style.alignItems='center';parent.style.justifyContent='center';
+      }else{
+        parent.classList.add('cr-export-media-frame');parent.style.width='auto';parent.style.maxWidth='100%';
+      }
+    }
   }
   const bodySelector='.markdown, .prose, [data-markdown-text-style="assistant-message"], [data-markdown-text-style="user-message"]';
   function messageBody(node) {
@@ -134,7 +196,7 @@
       const tag = n.localName;
       if(n.hasAttribute('data-cr-asset'))return `\n![${(n.getAttribute('alt') || n.querySelector('title')?.textContent || '图示').replace(/[\[\]\n]/g,' ')}](${n.getAttribute('data-cr-asset')})\n\n`;
       if(n.classList.contains('cr-export-control'))return `\n${n.textContent}\n\n`;
-      if(tag==='svg')return `\n${n.querySelector('title')?.textContent || ''} ${[...n.querySelectorAll('text')].map(x=>x.textContent).join(' · ')}\n\n`;
+      if(tag==='svg')return n.classList.contains('cr-export-icon')?(n.querySelector('title')?.textContent || ''):`\n${n.querySelector('title')?.textContent || ''} ${[...n.querySelectorAll('text')].map(x=>x.textContent).join(' · ')}\n\n`;
       const text = inline(n);
       if (/^h[1-6]$/.test(tag)) return `\n${'#'.repeat(Number(tag[1]))} ${text}\n\n`;
       if (tag === 'pre') { const code=n.querySelector('code'); const language=code?.className.match(/language-([\w-]+)/)?.[1] || ''; const raw=(code || n).textContent; const fence='`'.repeat(Math.max(3, ...[...raw.matchAll(/`+/g)].map(m => m[0].length + 1))); return `\n${fence}${language}\n${raw}\n${fence}\n\n`; }
@@ -155,5 +217,5 @@
     return inline(doc.body).replace(/\n{3,}/g,'\n\n').trim();
   }
   function markdown(node){return markdownHTML(messageBody(node).innerHTML);}
-  window.ChatGPTReader = {sanitizeHTML, safeStyle, assetPath, safeUrl, messageBody, messageNodes, roleOf, assistantNodes, userNodes, closestMessage, messageId, outline, markdown, markdownHTML};
+  window.ChatGPTReader = {sanitizeHTML, safeStyle, assetPath, safeUrl, mediaKind, sizeMedia, fitMedia, messageBody, messageNodes, roleOf, assistantNodes, userNodes, closestMessage, messageId, outline, markdown, markdownHTML};
 })();

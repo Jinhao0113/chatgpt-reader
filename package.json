@@ -1,6 +1,6 @@
 {
   "name": "chatgpt-reader",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "private": true,
   "description": "A local Manifest V3 reading extension for chatgpt.com",
   "scripts": {

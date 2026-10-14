@@ -14,6 +14,12 @@
     if(!inUI && !inSVG)return;
     const s=getComputedStyle(source);clone.removeAttribute('style');const target=clone.style;
     if(inSVG){
+      // Native diagrams can draw shapes through CSS geometry rather than HTML
+      // attributes. Freeze those values before removing the original classes.
+      const geometry={rect:['x','y','rx','ry','width','height'],circle:['cx','cy','r'],ellipse:['cx','cy','rx','ry'],use:['x','y','width','height']}[source.localName] || [];
+      for(const p of geometry){const value=s.getPropertyValue(p);if(/^-?\d+(?:\.\d+)?(?:px|%)?$/.test(value))clone.setAttribute(p,value);}
+      const cssPath=s.getPropertyValue('d').match(/^path\(["']([\s\S]*)["']\)$/);if(cssPath)clone.setAttribute('d',cssPath[1]);
+      if(s.transform && s.transform!=='none' && /^matrix\([0-9eE.,\s+-]+\)$/.test(s.transform))clone.setAttribute('transform',s.transform);
       for(const p of ['color','fill','stroke','stroke-width','opacity','font-size','font-family','font-weight']) {
         const value=s.getPropertyValue(p);
         // Resolve inherited chart colors, but leave local gradient references intact.
@@ -64,7 +70,7 @@
           canvas.width=Math.max(1,Math.round(source.width*ratio));canvas.height=Math.max(1,Math.round(source.height*ratio));
           canvas.getContext('2d').drawImage(source,0,0,canvas.width,canvas.height);
           const data=canvas.toDataURL('image/png'),img=document.createElement('img');
-          img.src=data;img.alt=source.getAttribute('aria-label') || '交互图表（导出时状态）';img.className='cr-export-chart';
+          img.src=data;img.alt=source.getAttribute('aria-label') || '交互图表（导出时状态）';img.dataset.crMedia='figure';R.sizeMedia(img,source);
           asset(img,'png',data.split(',')[1]);return img;
         }catch{return notice('此画布受跨域限制，无法导出，请在原对话中查看。');}
       }
@@ -78,7 +84,7 @@
         return el;
       }
       if(tag==='img' && source.src.startsWith('blob:')) {
-        try{const canvas=document.createElement('canvas');canvas.width=source.naturalWidth;canvas.height=source.naturalHeight;canvas.getContext('2d').drawImage(source,0,0);const el=document.createElement('img');el.src=canvas.toDataURL('image/png');el.alt=source.alt;asset(el,'png',el.src.split(',')[1]);return el;}catch{return notice('此临时图片无法读取，请在原对话中查看。');}
+        try{const canvas=document.createElement('canvas');canvas.width=source.naturalWidth;canvas.height=source.naturalHeight;canvas.getContext('2d').drawImage(source,0,0);const el=document.createElement('img');el.src=canvas.toDataURL('image/png');el.alt=source.alt;R.sizeMedia(el,source);asset(el,'png',el.src.split(',')[1]);return el;}catch{return notice('此临时图片无法读取，请在原对话中查看。');}
       }
       const el=source.cloneNode(false);
       styleNode(source,el,inUI,inSVG);
@@ -88,7 +94,8 @@
       if(tag==='details')el.open=true;
       const children=source.shadowRoot?[...source.shadowRoot.childNodes]:[...source.childNodes];
       for(const child of children){if(tag==='details' && !source.open && child.nodeType===1 && child.localName!=='summary')continue;const copy=clone(child,inUI || tag==='foreignobject',inSVG);if(copy)el.append(copy);}
-      if(tag==='svg') {
+      if(tag==='img')R.sizeMedia(el,source);
+      if(tag==='svg' && !source.parentElement.closest('svg')) {
         const rect=source.getBoundingClientRect();
         if(!el.hasAttribute('viewBox') && rect.width && rect.height){const numeric=(name,fallback)=>/^\d+(?:\.\d+)?$/.test(source.getAttribute(name) || '')?Number(source.getAttribute(name)):fallback;el.setAttribute('viewBox',`0 0 ${numeric('width',rect.width)} ${numeric('height',rect.height)}`);}
         el.setAttribute('xmlns',svgNS);
@@ -99,15 +106,15 @@
           else if(['href','xlink:href'].includes(a.name) && ids.has(a.value.slice(1)))n.setAttribute(a.name,'#'+ids.get(a.value.slice(1)));
           else if(/url\s*\(/i.test(a.value))n.setAttribute(a.name,a.value.replace(/url\(["']?(?:[^)"']*#)?([\w:.-]+)["']?\)/g,(all,id)=>ids.has(id)?`url(#${ids.get(id)})`:all));
         }
-        el.setAttribute('class','cr-export-chart');el.style.maxWidth='100%';el.style.height='auto';el.style.backgroundColor=backdrop(source);
+        const kind=R.sizeMedia(el,source);if(kind!=='icon')el.style.backgroundColor=backdrop(source);
         const safe=R.sanitizeHTML(el.outerHTML);
         const safeNode=new DOMParser().parseFromString(safe,'text/html').body.firstElementChild;
-        if(rect.width>40 || rect.height>40){const svg=new XMLSerializer().serializeToString(safeNode);asset(safeNode,'svg',svg);}
+        if(kind!=='icon'){const svg=new XMLSerializer().serializeToString(safeNode);asset(safeNode,'svg',svg);}
         return safeNode;
       }
       return el;
     }
-    const result=clone(R.messageBody(node)),html=R.sanitizeHTML(result?.outerHTML || '');
+    const result=clone(R.messageBody(node));if(result)R.fitMedia(result);const html=R.sanitizeHTML(result?.outerHTML || '');
     return {role:R.roleOf(node)==='user'?'你':'ChatGPT',html,text:format==='markdown'?R.markdownHTML(html):''};
   };
 })();
