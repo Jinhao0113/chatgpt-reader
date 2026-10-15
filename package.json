@@ -1,10 +1,10 @@
 {
   "name": "chatgpt-reader",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "private": true,
   "description": "A local Manifest V3 reading extension for chatgpt.com",
   "scripts": {
-    "test": "node tests/smoke.cjs && node tests/rich-export.cjs && node tests/paper-export.cjs",
+    "test": "node tests/smoke.cjs && node tests/rich-export.cjs && node tests/paper-export.cjs && node tests/navigation.cjs",
     "check": "node --check shared.js && node --check rich-export.js && node --check zip.js && node --check bridge.js && node --check page-agent.js && node --check native-panel.js && node --check content.js && node --check background.js && node --check print.js"
   },
   "devDependencies": {

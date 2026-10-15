@@ -53,6 +53,7 @@ async function handle(m, sender) {
     }
     if(m.type==='CR_NATIVE_QUOTE_ACK'){await chrome.storage.session.remove(`readerQuote:${tab.id}`);return{ok:true};}
     if(['CR_NATIVE_JUMP','CR_NATIVE_SEARCH','CR_NATIVE_EXPORT'].includes(m.type)){
+      if(m.type==='CR_NATIVE_JUMP' && m.sourceKey!==new URL(tab.url).pathname)return{ok:false,error:'原对话已切换，目录已更新，请重新选择位置'};
       if(m.type==='CR_NATIVE_EXPORT' && (m.sourceKey!==new URL(tab.url).pathname || !['current','all'].includes(m.scope) || !['pdf','markdown'].includes(m.format)))return{ok:false,error:'原对话已切换，请刷新目录后重新导出'};
       try{return await chrome.tabs.sendMessage(tab.id,m);}catch{return{ok:false,error:'原网页连接已断开，请刷新网页'};}
     }

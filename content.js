@@ -49,7 +49,7 @@
     .stats { display:flex; justify-content:space-between; color:var(--muted); font-size:11px; margin:16px 0 9px; } .bar { height:3px; background:var(--line); border-radius:9px; overflow:hidden; } .bar span { display:block; background:var(--accent); width:0; height:100%; transition:width .1s; }
     .search { margin:21px 0 15px; position:relative; } .search input { padding-left:34px; font-size:12px; } .search>svg { position:absolute; top:11px; left:11px; color:var(--muted); } .search-count { display:flex; align-items:center; justify-content:space-between; color:var(--muted); font-size:11px; padding-top:6px; }
     .section-label { display:flex; align-items:center; justify-content:space-between; margin:21px 0 12px; } .section-label .label { margin:0; } .pill { color:var(--accent); background:var(--soft); padding:4px 7px; border-radius:5px; font-size:10px; }
-    .toc { list-style:none; padding:0; margin:0; } .toc li { margin:3px 0; } .toc button { width:100%; text-align:left; padding:10px 10px; border:0; border-left:2px solid transparent; background:transparent; color:var(--muted); border-radius:0 6px 6px 0; line-height:1.6; font-size:12px; } .toc button:hover { background:var(--soft); color:var(--ink); } .toc button.active { color:var(--accent); border-left-color:var(--accent); background:var(--soft); font-weight:550; } .toc .number { font-size:9px; opacity:.6; margin-right:9px; font-variant-numeric:tabular-nums; }
+    .toc { list-style:none; padding:0; margin:0; } .toc li { margin:1px 0; } .toc button { width:100%; text-align:left; padding:5px 10px; border:0; border-left:2px solid transparent; background:transparent; color:var(--muted); border-radius:0 6px 6px 0; line-height:1.45; font-size:12px; } .toc button:hover { background:var(--soft); color:var(--ink); } .toc button.active { color:var(--accent); border-left-color:var(--accent); background:var(--soft); font-weight:550; } .toc .number { font-size:9px; opacity:.6; margin-right:9px; font-variant-numeric:tabular-nums; }
     .footer { padding:15px 20px 17px; border-top:1px solid var(--line); } .footer .row { margin-top:8px; } .button { display:flex; justify-content:center; align-items:center; gap:7px; border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:8px; padding:10px 12px; font-size:12px; } .button:hover { background:var(--soft); } .button.primary { background:var(--accent); color:var(--bg); border-color:var(--accent); } .footer button { flex:1; }
     .dock { position:fixed; right:20px; bottom:26px; z-index:2147483640; width:48px; height:48px; border:1px solid #ffffff30; border-radius:15px; color:var(--bg); background:var(--ink); box-shadow:0 4px 20px #00000020; font-size:23px; }
     .selection { position:fixed; z-index:2147483646; display:flex; gap:0; padding:4px; background:var(--ink); border:1px solid var(--line); box-shadow:0 5px 20px #00000020; border-radius:9px; color:var(--bg); } .selection button { display:flex; align-items:center; gap:6px; border:0; color:inherit; background:transparent; padding:7px 10px; border-radius:5px; font-size:12px; } .selection button:hover { background:#ffffff20; }
@@ -102,7 +102,7 @@
   const $=s=>shadow.querySelector(s), $$=s=>[...shadow.querySelectorAll(s)];
   const defaults={font:16,line:1.8,focus:false,theme:'auto',follow:true};
   const state={open:false,tab:'toc',sourceKey:currentKey(),answers:[],active:null,items:[],bookmarks:[],messages:[],quote:'',quoteNode:null,selected:null,busy:false,currentJob:null,settings:{...defaults},search:[],searchIndex:0};
-  let refreshTimer, saveTimer, toastTimer, scrollFrame, signature='', optionSignature='', lastDocLoad=0;
+  let refreshTimer, saveTimer, toastTimer, scrollFrame, signature='', optionSignature='', lastDocLoad=0,navigationToken=0;
   async function rpc(message) { try { return N?await N.rpc({sourceKey:state.sourceKey,...message}):await chrome.runtime.sendMessage({sourceKey:state.sourceKey,...message}); } catch { return {ok:false,error:'扩展已更新，请刷新 ChatGPT 页面'}; } }
   function toast(text) { $('.toast').textContent=text; $('.toast').hidden=false; clearTimeout(toastTimer); toastTimer=setTimeout(()=>$('.toast').hidden=true,4200); }
   async function saveDoc() {
@@ -172,10 +172,13 @@
       state.answers.forEach((a,i)=>$('.answer-select').append(new Option(`回答 ${i+1} · ${R.messageBody(a).textContent.trim().replace(/\s+/g,' ').slice(0,25) || '正在生成…'}`,String(i))));
     }
     if (state.active) $('.answer-select').value=String(state.answers.indexOf(state.active));
-    const items=state.active ? R.outline(state.active) : [];
+    const items=state.active ? (N?.outlines.get(R.messageId(state.active,state.answers.indexOf(state.active))) || R.outline(state.active)) : [];
     const sig=items.map(x=>`${x.level}:${x.text}`).join('|');
+    // The mirrored body is replaced during streaming even if its titles remain
+    // unchanged. Keep current targets independently of directory repainting.
+    state.items=items;
     if (sig!==signature || old!==state.active) {
-      signature=sig; state.items=items; renderOutline();
+      signature=sig; renderOutline();
     }
     const text=state.active ? R.messageBody(state.active).textContent : '';
     $('.reading-time').textContent=text ? `约 ${Math.max(1,Math.ceil(text.length/550))} 分钟 · ${text.trim().length.toLocaleString()} 字` : '—';
@@ -198,11 +201,20 @@
     state.items.forEach((item,i)=>{
       const li=document.createElement('li'), button=document.createElement('button'), num=document.createElement('span'), title=document.createElement('span');
       num.className='number'; num.textContent=String(i+1).padStart(2,'0'); title.textContent=item.text;
-      button.style.paddingLeft=`${10+(item.level-min)*13}px`; button.title=item.text; button.append(num,title); button.addEventListener('click',()=>jump(item.node)); li.append(button); $('.toc').append(li);
+      button.style.paddingLeft=`${10+(item.level-min)*13}px`; button.title=item.text; button.append(num,title); button.addEventListener('click',()=>jumpOutline(i)); li.append(button); $('.toc').append(li);
     });
   }
+  async function nativeJump(id,text,outline) {
+    const token=++navigationToken,result=await N.jump(id,text,outline);
+    if(!result.ok && !result.cancelled && token===navigationToken){await N.rescan();if(token===navigationToken)toast(result.error || '未找到目录位置，请刷新目录后重试');}
+  }
+  function jumpOutline(index) {
+    const item=state.items[index];if(!item || !state.active)return;
+    if(N){const id=R.messageId(state.active,state.answers.indexOf(state.active));void nativeJump(id,item.text,{index:item.index??index,text:item.text,level:item.level,occurrence:item.occurrence??0});}
+    else jump(item.node);
+  }
   function jump(node) {
-    if(N){const message=node.closest('[data-native-id]');void N.jump(message?.dataset.nativeId,node.textContent.trim().slice(0,12000));return;}
+    if(N){const message=node.closest('[data-native-id]');void nativeJump(message?.dataset.nativeId,node.textContent.trim().slice(0,12000));return;}
     // scroll-margin is an inline change limited to the chosen anchor.
     node.style.scrollMarginTop='100px';
     node.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'instant':'smooth',block:'start'});
@@ -213,7 +225,7 @@
     const percent=N?N.progress:Math.round(Math.max(0,Math.min(1,(innerHeight-110-r.top)/Math.max(r.height,1)))*100);
     $('.progress-text').textContent=`已读 ${percent}%`; $('.bar span').style.width=`${percent}%`;
     let current=0;
-    state.items.forEach((x,i)=>{ if(N?x.text===N.heading:x.node.getBoundingClientRect().top<innerHeight*.36)current=i; });
+    state.items.forEach((x,i)=>{ if(N?(N.visibleId===R.messageId(state.active,state.answers.indexOf(state.active)) && (N.headingIndex>=0?i===N.headingIndex:x.text===N.heading)):x.node.getBoundingClientRect().top<innerHeight*.36)current=i; });
     $$('.toc button').forEach((b,i)=>{ b.classList.toggle('active',i===current); if(i===current)b.setAttribute('aria-current','location'); else b.removeAttribute('aria-current'); });
   }
   function findRange(root,query,offset=0,compact=false) {

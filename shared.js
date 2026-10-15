@@ -289,11 +289,15 @@
   }
   function outline(node) {
     const body = messageBody(node);
-    const headings = [...body.querySelectorAll('h1,h2,h3,h4,h5,h6')].filter(n => n.textContent.trim());
-    if (headings.length) return headings.map(n => ({node:n, text:n.textContent.trim(), level:Number(n.localName[1])}));
-    const bold = [...body.querySelectorAll('p > strong:first-child, li > strong:first-child')].filter(n => n.textContent.trim().length <= 80);
-    if (bold.length >= 2) return bold.slice(0, 40).map(n => ({node:n, text:n.textContent.trim(), level:2}));
-    return [...body.querySelectorAll('p,pre,table,ul,ol,blockquote')].filter(n => !n.parentElement.closest('pre,table,ul,ol,blockquote') && n.textContent.trim()).slice(0, 30).map((n,i) => ({node:n, text:`${i + 1}. ${n.textContent.trim().replace(/\s+/g,' ').slice(0,54)}`, level:2}));
+    const text=n=>{const copy=n.cloneNode(true);copy.querySelectorAll('.katex-html,annotation,button,[data-cr-owned]').forEach(el=>el.remove());return copy.textContent.trim().replace(/\s+/g,' ');};
+    const headings = [...body.querySelectorAll('h1,h2,h3,h4,h5,h6')].filter(n => text(n));
+    let items;
+    if(headings.length)items=headings.map(n=>({node:n,text:text(n),level:Number(n.localName[1])}));
+    else{
+      const bold=[...body.querySelectorAll('p > strong:first-child, li > strong:first-child')].filter(n=>text(n) && text(n).length<=80);
+      items=bold.length>=2?bold.slice(0,40).map(n=>({node:n,text:text(n),level:2})):[...body.querySelectorAll('p,pre,table,ul,ol,blockquote')].filter(n=>!n.parentElement.closest('pre,table,ul,ol,blockquote') && text(n)).slice(0,30).map((n,i)=>({node:n,text:`${i+1}. ${text(n).slice(0,54)}`,level:2}));
+    }
+    const counts=new Map();return items.map((item,index)=>{const key=`${item.level}:${item.text}`,occurrence=counts.get(key)||0;counts.set(key,occurrence+1);return{...item,index,occurrence};});
   }
   function markdownHTML(html) {
     const doc = new DOMParser().parseFromString(sanitizeHTML(html), 'text/html');

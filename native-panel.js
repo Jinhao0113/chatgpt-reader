@@ -1,20 +1,21 @@
 (() => {
   'use strict';
   const R=window.ChatGPTReader, root=document.getElementById('reader-page-snapshot');
-  const N={tabId:Number(new URL(location.href).searchParams.get('tabId')) || null,url:'https://chatgpt.com/',title:'ChatGPT 对话',visibleId:'',progress:0,heading:'',dark:false,pendingQuote:null};
+  const N={tabId:Number(new URL(location.href).searchParams.get('tabId')) || null,url:'https://chatgpt.com/',title:'ChatGPT 对话',visibleId:'',progress:0,heading:'',headingIndex:-1,dark:false,pendingQuote:null,outlines:new Map()};
   window.ChatGPTReaderNative=N;
   let resolveReady;N.ready=new Promise(resolve=>resolveReady=resolve);
   N.rpc=async m=>{try{return await chrome.runtime.sendMessage({tabId:N.tabId,...m});}catch{return{ok:false,error:'连接已断开，请刷新 ChatGPT 后重新打开阅读助手'};}};
-  N.jump=(id,text)=>N.rpc({type:'CR_NATIVE_JUMP',messageId:id,text});
+  N.jump=(id,text,outline)=>N.rpc({type:'CR_NATIVE_JUMP',sourceKey:new URL(N.url).pathname,messageId:id,text,outline});
   N.search=(query,index,scroll)=>N.rpc({type:'CR_NATIVE_SEARCH',query,index,scroll});
   N.rescan=async()=>{const result=await N.rpc({type:'CR_NATIVE_GET'});if(result.data)render(result.data);return result;};
   N.close=()=>N.rpc({type:'CR_NATIVE_CLOSE'});
   function render(data) {
     if(!data || !Array.isArray(data.entries))return;
-    N.url=data.url;N.title=data.title;N.visibleId=data.visibleId;N.progress=data.progress;N.heading=data.heading;N.dark=data.dark;N.generating=data.generating;
+    N.url=data.url;N.title=data.title;N.visibleId=data.visibleId;N.progress=data.progress;N.heading=data.heading;N.headingIndex=data.headingIndex??-1;N.dark=data.dark;N.generating=data.generating;N.outlines.clear();
     const existing=new Map([...root.children].map(n=>[n.dataset.nativeId,n]));
     const keep=new Set();
     for(const entry of data.entries) {
+      if(Array.isArray(entry.outline))N.outlines.set(entry.id,entry.outline);
       let node=existing.get(entry.id);
       if(!node){node=document.createElement('article');node.dataset.nativeId=entry.id;node.dataset.messageId=entry.id;node.innerHTML='<div class="markdown"></div>';}
       node.dataset.messageAuthorRole=entry.role;
