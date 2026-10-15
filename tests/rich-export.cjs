@@ -44,9 +44,9 @@ const box=document.querySelector('[data-composer-markdown]'),send=document.query
       assert.equal(await preview.locator('.content input,.content select,.content button,.content iframe,.content script').count(),0);assert.equal(await preview.locator('.cr-export-notice').count(),0);
       await preview.screenshot({path:path.join(root,'outputs/Intelligent-UI-导出预览.png'),fullPage:true});await preview.pdf({path:path.join(root,'work/intelligent-export.pdf'),format:'A4',preferCSSPageSize:true,printBackground:true});
     });
-    await check('Dark curve colors, local gradients and column layout survive sanitization',async()=>{
+    await check('White paper keeps colored curves, local gradients and column layout',async()=>{
       const colors=await preview.locator('.content svg.cr-export-chart').evaluate(n=>({bg:getComputedStyle(n).backgroundColor,stroke:getComputedStyle(n.querySelector('.curve') || n.querySelectorAll('path')[1]).stroke,fill:n.querySelector('circle').getAttribute('fill'),ids:[...n.querySelectorAll('[id]')].map(x=>x.id)}));
-      assert.equal(colors.bg,'rgb(23, 23, 23)');assert.equal(colors.stroke,'rgb(87, 166, 255)');assert(colors.fill.includes(colors.ids[0]));assert((await preview.locator('.content [style*="grid-template-columns"]').getAttribute('style')).includes('repeat(2'));
+      assert.equal(colors.bg,'rgb(255, 255, 255)');assert.equal(colors.stroke,'rgb(87, 166, 255)');assert(colors.fill.includes(colors.ids[0]));assert((await preview.locator('.content [style*="grid-template-columns"]').getAttribute('style')).includes('repeat(2'));
       const bounds=await preview.locator('.content').evaluate(n=>({client:n.clientWidth,scroll:n.scrollWidth}));assert(bounds.scroll<=bounds.client+2);
     });
     await check('Status and inline SVG icons retain their small size without inflating wrapper boxes',async()=>{
@@ -87,7 +87,7 @@ const box=document.querySelector('[data-composer-markdown]'),send=document.query
       const portrait=mediaPreview.locator('svg.cr-export-chart').last();const p=await portrait.boundingBox();assert(p.height<=605);assert(Math.abs(p.width/p.height-1/6)<.01);assert((await portrait.textContent()).includes('底部'));
       const image=await mediaPreview.locator('img[alt="小幅普通图片"]').boundingBox();assert(image.width<=180);assert(Math.abs(image.width/image.height-300/160)<.01);
       await mediaPreview.emulateMedia({media:'print'});const printed=await portrait.boundingBox();assert(printed.height<=605);assert(Math.abs(printed.width/printed.height-1/6)<.01);
-      await mediaPreview.pdf({path:path.join(root,'work/media-sizing-export.pdf'),format:'A4',preferCSSPageSize:true,printBackground:true});await mediaPreview.close();
+      await mediaPreview.emulateMedia({media:'print'});await mediaPreview.pdf({path:path.join(root,'work/media-sizing-export.pdf'),format:'A4',preferCSSPageSize:true,printBackground:true});await mediaPreview.close();
     });
     await check('Source-export route rejects stale conversations',async()=>{const result=await panel.evaluate(async tabId=>chrome.runtime.sendMessage({type:'CR_NATIVE_EXPORT',tabId,sourceKey:'/c/other',scope:'all',format:'pdf'}),tabId);assert.equal(result.ok,false);assert(result.error.includes('已切换'));});
     await check('CSS-drawn SVG shapes retain geometry when source stylesheets are removed',async()=>{

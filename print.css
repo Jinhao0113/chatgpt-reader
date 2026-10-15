@@ -19,3 +19,18 @@ main { background:#fff; max-width:210mm; margin:28px auto; padding:20mm 18mm; bo
 .cr-export-notice,.export-note { font-size:11px; line-height:1.7; padding:10px 12px; border:1px solid #ddd; background:#f7f7f7; color:#525252; border-radius:6px; }
 .content .cr-export-ui td,.content .cr-export-ui th { background:transparent; color:inherit; }
 .content,.content * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.content .cr-export-ui { background:#fff!important; color:#1f2937!important; padding:0!important; border:0!important; border-radius:0!important; font-size:12.5px; line-height:1.85; }
+.content .cr-export-stack > * + * { margin-top:12px; }
+.content .cr-export-figure { box-sizing:border-box; background:#fff!important; border:1px solid #e2e8f0!important; border-radius:8px; padding:12px!important; margin:18px 0; height:auto!important; aspect-ratio:auto!important; break-inside:avoid; }
+.content .cr-export-figure img { margin:0 auto 10px!important; }
+.content figcaption { color:#64748b!important; text-align:center; font-size:10px; line-height:1.65; padding:6px 0; }
+.content figcaption a { display:inline!important; background:transparent!important; border:0!important; border-radius:0!important; padding:0!important; color:#475569!important; text-decoration:underline; overflow-wrap:anywhere; }
+.content .cr-export-control { background:#f8fafc!important; color:#334155!important; border-color:#d9dee4; }
+.content .cr-export-table-frame { overflow:visible!important; break-inside:auto; }
+.content table.cr-export-table { display:table!important; width:100%!important; max-width:100%!important; min-width:0!important; table-layout:fixed; border-collapse:collapse; font-size:10.5px; line-height:1.65; }
+.content .cr-export-table th,.content .cr-export-table td { display:table-cell!important; width:auto!important; min-width:0!important; max-width:none!important; height:auto!important; padding:7px 9px!important; white-space:normal!important; overflow-wrap:anywhere; word-break:normal; vertical-align:top; border:1px solid #d9dee4!important; }
+.content .cr-export-table th { background:#f4f6f8!important; font-weight:650; }
+.content .cr-export-table th *,.content .cr-export-table td * { background:transparent!important; white-space:normal!important; overflow-wrap:anywhere; }
+.content .cr-export-table thead { display:table-header-group!important; }
+.content .cr-export-table tbody { display:table-row-group!important; }
+.content .cr-export-table tr { display:table-row!important; break-inside:avoid; }

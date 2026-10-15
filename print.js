@@ -7,7 +7,7 @@
     try {
       // Avoid waiting forever on unavailable images from the original answer.
       await Promise.race([Promise.all([...document.images].map(img=>img.complete?Promise.resolve():new Promise(resolve=>{img.addEventListener('load',resolve,{once:true});img.addEventListener('error',resolve,{once:true});}))),new Promise(r=>setTimeout(r,4000))]);
-      await document.fonts.ready;window.ChatGPTReader.fitMedia(document.getElementById('document'));window.print();
+      await document.fonts.ready;await window.ChatGPTReader.preparePaper(document.getElementById('document'));window.print();
     } finally {button.disabled=false;}
   });
   try {
@@ -34,6 +34,6 @@
       for(const h of headings) {h.id=`heading-${headingCount++}`;const li=document.createElement('li'),a=document.createElement('a');a.href='#'+h.id;a.textContent=h.textContent;li.append(a);list.append(li);}
       if(!headings.length){const li=document.createElement('li'),a=document.createElement('a');a.href='#'+article.id;a.textContent=`${entry.role} · ${content.textContent.trim().slice(0,45)}`;li.append(a);list.append(li);}
     }
-    button.disabled=false;
+    await window.ChatGPTReader.preparePaper(main);button.disabled=false;
   } catch(e) {const node=document.getElementById('loading') || document.createElement('p');node.className='error';node.textContent=e.message;document.getElementById('document').append(node);}
 })();

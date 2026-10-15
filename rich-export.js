@@ -52,6 +52,15 @@
       element.setAttribute('data-cr-asset',name);assets.push({name,type,content});
     };
     const notice=message=>{warn(message);const p=document.createElement('p');p.className='cr-export-notice';p.textContent=message;return p;};
+    function namespaceSVG(el) {
+      // Inline definitions must not collide when several answers are combined.
+      const prefix=++chartSequence,ids=new Map([...el.querySelectorAll('[id]')].map((n,i)=>[n.id,`crchart-${prefix}-${i}`]));
+      for(const n of [el,...el.querySelectorAll('*')])for(const a of [...n.attributes]){
+        if(a.name==='id' && ids.has(a.value))n.id=ids.get(a.value);
+        else if(['href','xlink:href'].includes(a.name) && ids.has(a.value.slice(1)))n.setAttribute(a.name,'#'+ids.get(a.value.slice(1)));
+        else if(/url\s*\(/i.test(a.value))n.setAttribute(a.name,a.value.replace(/url\(["']?(?:[^)"']*#)?([\w:.-]+)["']?\)/g,(all,id)=>ids.has(id)?`url(#${ids.get(id)})`:all));
+      }
+    }
     function clone(source,inUI=false,inSVG=false) {
       if(source.nodeType===Node.TEXT_NODE)return source.cloneNode();
       if(source.nodeType!==Node.ELEMENT_NODE)return null;
@@ -69,13 +78,15 @@
           const ratio=Math.min(1,1600/Math.max(source.width,source.height)),canvas=document.createElement('canvas');
           canvas.width=Math.max(1,Math.round(source.width*ratio));canvas.height=Math.max(1,Math.round(source.height*ratio));
           canvas.getContext('2d').drawImage(source,0,0,canvas.width,canvas.height);
+          R.lightenCanvas(canvas,backdrop(source));
           const data=canvas.toDataURL('image/png'),img=document.createElement('img');
-          img.src=data;img.alt=source.getAttribute('aria-label') || '交互图表（导出时状态）';img.dataset.crMedia='figure';R.sizeMedia(img,source);
+          img.src=data;img.alt=source.getAttribute('aria-label') || '交互图表（导出时状态）';img.dataset.crMedia='figure';img.dataset.crPaper='light';R.sizeMedia(img,source);
           asset(img,'png',data.split(',')[1]);return img;
         }catch{return notice('此画布受跨域限制，无法导出，请在原对话中查看。');}
       }
       if(['input','textarea','select','button'].includes(tag) || source.getAttribute('role')==='slider') {
         if(!inUI || ['password','hidden','file'].includes(source.type))return null;
+        if(tag==='button' && R.imageAction.test(source.textContent.trim()))return null;
         const el=document.createElement('span');el.className='cr-export-control';
         let label=source.getAttribute('aria-label') || (source.id?[...document.querySelectorAll('label[for]')].find(n=>n.htmlFor===source.id)?.textContent:'') || '';
         const value=tag==='select'?[...source.selectedOptions].map(n=>n.textContent).join('、'):tag==='button'?source.textContent.trim():['checkbox','radio'].includes(source.type)?(source.checked?'已选中':'未选中'):source.getAttribute('aria-valuetext') || source.value || source.getAttribute('aria-valuenow') || '';
@@ -86,7 +97,16 @@
       if(tag==='img' && source.src.startsWith('blob:')) {
         try{const canvas=document.createElement('canvas');canvas.width=source.naturalWidth;canvas.height=source.naturalHeight;canvas.getContext('2d').drawImage(source,0,0);const el=document.createElement('img');el.src=canvas.toDataURL('image/png');el.alt=source.alt;R.sizeMedia(el,source);asset(el,'png',el.src.split(',')[1]);return el;}catch{return notice('此临时图片无法读取，请在原对话中查看。');}
       }
+      if(tag==='img' && /^data:image\/svg\+xml[;,]/i.test(source.src)){
+        const parsed=R.svgImage(source.src);if(!parsed)return notice('此图示格式无法解析，请在原对话中查看。');
+        const safe=new DOMParser().parseFromString(R.sanitizeHTML(parsed.outerHTML),'text/html').body.firstElementChild;
+        if(!safe)return notice('此图示无法读取，请在原对话中查看。');
+        safe.dataset.crMedia='figure';const rect=source.getBoundingClientRect();if(rect.width)safe.dataset.crMediaWidth=String(rect.width);
+        namespaceSVG(safe);R.sizeMedia(safe);R.paperSVG(safe);
+        asset(safe,'svg',new XMLSerializer().serializeToString(safe));return safe;
+      }
       const el=source.cloneNode(false);
+      if(source.matches('[data-d-component="image"],[data-d-component="image-card"]'))el.classList.add('cr-export-figure');
       styleNode(source,el,inUI,inSVG);
       if(source.matches('[data-dil-message-id]')){
         el.className='cr-export-ui';el.dataset.crUi='true';el.style.backgroundColor=backdrop(source);el.style.color=getComputedStyle(source).color;el.style.padding='16px';el.style.borderRadius='12px';el.style.maxWidth='100%';
@@ -99,16 +119,11 @@
         const rect=source.getBoundingClientRect();
         if(!el.hasAttribute('viewBox') && rect.width && rect.height){const numeric=(name,fallback)=>/^\d+(?:\.\d+)?$/.test(source.getAttribute(name) || '')?Number(source.getAttribute(name)):fallback;el.setAttribute('viewBox',`0 0 ${numeric('width',rect.width)} ${numeric('height',rect.height)}`);}
         el.setAttribute('xmlns',svgNS);
-        // Inline definitions must not collide when several answers are combined.
-        const prefix=++chartSequence,ids=new Map([...el.querySelectorAll('[id]')].map((n,i)=>[n.id,`crchart-${prefix}-${i}`]));
-        for(const n of [el,...el.querySelectorAll('*')])for(const a of [...n.attributes]){
-          if(a.name==='id' && ids.has(a.value))n.id=ids.get(a.value);
-          else if(['href','xlink:href'].includes(a.name) && ids.has(a.value.slice(1)))n.setAttribute(a.name,'#'+ids.get(a.value.slice(1)));
-          else if(/url\s*\(/i.test(a.value))n.setAttribute(a.name,a.value.replace(/url\(["']?(?:[^)"']*#)?([\w:.-]+)["']?\)/g,(all,id)=>ids.has(id)?`url(#${ids.get(id)})`:all));
-        }
+        namespaceSVG(el);
         const kind=R.sizeMedia(el,source);if(kind!=='icon')el.style.backgroundColor=backdrop(source);
         const safe=R.sanitizeHTML(el.outerHTML);
         const safeNode=new DOMParser().parseFromString(safe,'text/html').body.firstElementChild;
+        if(format==='markdown')R.paperSVG(safeNode);
         if(kind!=='icon'){const svg=new XMLSerializer().serializeToString(safeNode);asset(safeNode,'svg',svg);}
         return safeNode;
       }

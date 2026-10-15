@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const allowedTags = new Set(('p div section span br hr h1 h2 h3 h4 h5 h6 strong b em i u s del blockquote pre code ul ol li table thead tbody tfoot tr th td caption a img figure figcaption details summary sub sup kbd mark math semantics annotation mrow mi mn mo mfrac msqrt mroot msub msup msubsup munder mover munderover mtext mspace mtable mtr mtd menclose mpadded mstyle').split(' '));
-  const allowedAttrs = new Set(('href src alt title colspan rowspan start class display mathvariant encoding stretchy fence separator accent accentunder columnalign rowalign columnspacing rowspacing width height depth notation style open data-cr-asset data-cr-ui data-cr-media data-cr-media-width data-cr-media-height').split(' '));
+  const allowedAttrs = new Set(('href src alt title colspan rowspan start class display mathvariant encoding stretchy fence separator accent accentunder columnalign rowalign columnspacing rowspacing width height depth notation style open data-cr-asset data-cr-ui data-cr-media data-cr-media-width data-cr-media-height data-cr-paper').split(' '));
   const svgTags = new Set('svg g path rect circle ellipse line polyline polygon text tspan title desc defs lineargradient radialgradient stop clippath mask pattern marker use symbol foreignobject'.split(' '));
   const svgAttrs = new Set('viewbox xmlns xmlns:xlink x y x1 y1 x2 y2 cx cy r rx ry d points fill fill-opacity fill-rule stroke stroke-width stroke-opacity stroke-linecap stroke-linejoin stroke-dasharray stroke-dashoffset opacity transform gradienttransform gradientunits offset stop-color stop-opacity clippathunits clip-path mask maskunits patternunits patterntransform marker-start marker-mid marker-end markerwidth markerheight refx refy orient text-anchor dominant-baseline font-size font-family font-weight id href xlink:href preserveaspectratio vector-effect'.split(' '));
   const styleProps = new Set('color background-color display flex-direction flex-wrap flex-grow flex-shrink flex-basis justify-content align-items align-content align-self gap row-gap column-gap grid-template-columns grid-column grid-row padding padding-top padding-right padding-bottom padding-left margin margin-top margin-right margin-bottom margin-left border border-top border-right border-bottom border-left border-radius border-color border-style border-width font-size font-weight font-style font-family line-height letter-spacing text-align text-decoration white-space vertical-align aspect-ratio width height max-width max-height min-width min-height fill stroke stroke-width opacity'.split(' '));
@@ -21,8 +21,24 @@
   const safeUrl = value => {
     try { const u = new URL(value, 'https://chatgpt.com'); return ['https:', 'http:'].includes(u.protocol) ? u.href : ''; } catch { return ''; }
   };
+  function svgImage(value) {
+    // Intelligent UI also publishes diagrams as URL-encoded or base64 SVG
+    // images. Convert them to ordinary SVG nodes, then apply the same allowlist.
+    const match=String(value).match(/^data:image\/svg\+xml(?:;charset=[\w-]+)?(;base64)?,([\s\S]+)$/i);
+    if(!match || match[2].length>2400000)return null;
+    try {
+      const text=match[1]?new TextDecoder().decode(Uint8Array.from(atob(match[2]),c=>c.charCodeAt(0))):decodeURIComponent(match[2]);
+      const doc=new DOMParser().parseFromString(text,'image/svg+xml'),svg=doc.documentElement;
+      return svg.localName==='svg' && svg.namespaceURI==='http://www.w3.org/2000/svg' && !doc.querySelector('parsererror')?svg:null;
+    }catch{return null;}
+  }
   function sanitizeHTML(html) {
     const doc = new DOMParser().parseFromString(String(html), 'text/html');
+    for(const image of doc.querySelectorAll('img[src^="data:image/svg+xml"]')){
+      const svg=svgImage(image.getAttribute('src'));if(!svg)continue;
+      for(const name of ['class','style','data-cr-media-width','data-cr-media-height','data-cr-paper'])if(image.hasAttribute(name))svg.setAttribute(name,image.getAttribute(name));
+      svg.dataset.crMedia='figure';image.replaceWith(doc.importNode(svg,true));
+    }
     doc.querySelectorAll('script,style,iframe,object,embed,input,textarea,button,select,video,audio,canvas,.katex-html,[data-cr-owned]').forEach(n => n.remove());
     // Prefer native MathML so equations remain readable without remote font assets.
     doc.querySelectorAll('annotation').forEach(n => n.remove());
@@ -35,6 +51,7 @@
         else if(name==='style') {const safe=safeStyle(a.value);if(safe)el.setAttribute('style',safe);else el.removeAttribute(a.name);}
         else if(name==='data-cr-asset' && !assetPath(a.value))el.removeAttribute(a.name);
         else if(name==='data-cr-media' && !['icon','figure','image'].includes(a.value))el.removeAttribute(a.name);
+        else if(name==='data-cr-paper' && a.value!=='light')el.removeAttribute(a.name);
         else if(/^data-cr-media-(width|height)$/.test(name) && !positiveSize(a.value))el.removeAttribute(a.name);
         else if(isSVG && ['href','xlink:href'].includes(name)){if(!/^#[\w:.-]+$/.test(a.value))el.removeAttribute(a.name);}
         else if(isSVG && /url\s*\(/i.test(a.value) && !/^url\(["']?#[\w:.-]+["']?\)$/.test(a.value))el.removeAttribute(a.name);
@@ -88,7 +105,7 @@
     }else{
       // Cap both dimensions through width, so portrait graphics keep their ratio
       // rather than being squeezed or cropped by max-height alone.
-      if(width){target.dataset.crMediaWidth=String(width);if(ratio)target.dataset.crMediaHeight=String(width/ratio);width=Math.min(width,ratio?160*96/25.4*ratio:width);target.style.width=`min(100%, ${Math.round(width*100)/100}px)`;}
+      if(width){target.dataset.crMediaWidth=String(width);if(ratio)target.dataset.crMediaHeight=String(width/ratio);width=Math.min(width,ratio?160*96/25.4*ratio:width,kind==='image' && target.closest('.cr-export-paper')?145*96/25.4:width);target.style.width=`min(100%, ${Math.round(width*100)/100}px)`;}
       else target.style.width='auto';
       target.style.height='auto';target.style.maxWidth='100%';target.style.maxHeight='160mm';target.style.margin='12px auto';
       if(ratio)target.style.aspectRatio=String(ratio);
@@ -96,10 +113,16 @@
     return kind;
   }
   function fitMedia(root) {
+    const containers=new Set();
     for(const media of root.querySelectorAll('svg,img')){
       if(media.parentElement.closest('svg'))continue;
       sizeMedia(media);
       if(media.localName==='img' && !media.complete)media.addEventListener('load',()=>sizeMedia(media),{once:true});
+      if(media.dataset.crMedia!=='icon')for(let n=media.parentElement;n;n=n.parentElement){
+        if(n===root && !n.matches('.content,.rich,[data-cr-ui]'))break;
+        if(n.namespaceURI==='http://www.w3.org/1999/xhtml')containers.add(n);
+        if(n===root || n.matches('.content,.rich'))break;
+      }
       const parent=media.parentElement;
       if(!parent.matches('div,span,figure') || parent.children.length!==1 || [...parent.childNodes].some(n=>n.nodeType===Node.TEXT_NODE && n.textContent.trim()))continue;
       parent.style.aspectRatio='auto';parent.style.height='auto';parent.style.minHeight='0';
@@ -109,6 +132,91 @@
         parent.classList.add('cr-export-media-frame');parent.style.width='auto';parent.style.maxWidth='100%';
       }
     }
+    // Fixed aspect ratios belong to the interactive viewport. Exported images
+    // have their own ratio, so every enclosing layout must grow with its content.
+    for(const n of containers){
+      if(!n.matches('div,section,figure,a'))continue;
+      n.style.height='auto';n.style.minHeight='0';n.style.maxHeight='none';n.style.aspectRatio='auto';n.style.flexShrink='0';n.style.flexBasis='auto';n.style.minWidth='0';
+      if(n.style.display.includes('flex') && (n.style.flexDirection==='column' || n.querySelector('img:not(.cr-export-icon)'))){n.classList.add('cr-export-stack');n.style.display='block';}
+    }
+  }
+  const imageAction=/^(?:Open\b|添加到收藏夹|收藏图片|下载图片|复制图片|分享图片|打开图片|打开图像)/i;
+  function rgb(value){const hex=String(value).match(/^#([\da-f]{3}|[\da-f]{6})$/i);if(hex){const h=hex[1].length===3?[...hex[1]].map(x=>x+x).join(''):hex[1];return[0,2,4].map(i=>parseInt(h.slice(i,i+2),16));}const m=String(value).match(/^rgba?\(([^)]+)\)/);return m?m[1].split(/[,\s/]+/).slice(0,3).map(Number):null;}
+  function lightenCanvas(canvas,darkContext=false){
+    if(typeof darkContext==='string'){const color=rgb(darkContext);darkContext=Boolean(color && color.reduce((a,b)=>a+b)/3<128);}
+    const ctx=canvas.getContext('2d',{willReadFrequently:true}),data=ctx.getImageData(0,0,canvas.width,canvas.height),p=data.data;
+    let dark=0,opaque=0;const steps=Math.max(1,Math.floor(Math.min(canvas.width,canvas.height)/24));
+    for(let y=0;y<canvas.height;y+=steps)for(const x of [0,canvas.width-1]){const i=(y*canvas.width+x)*4;if(p[i+3]>200){opaque++;if(Math.max(p[i],p[i+1],p[i+2])<128)dark++;}}
+    if(!(darkContext || (opaque && dark/opaque>.65)))return false;
+    for(let i=0;i<p.length;i+=4){if(!p[i+3])continue;const max=Math.max(p[i],p[i+1],p[i+2]),min=Math.min(p[i],p[i+1],p[i+2]),shift=255-max-min;if(max-min<12 && max<45){p[i]=p[i+1]=p[i+2]=255;}else{p[i]+=shift;p[i+1]+=shift;p[i+2]+=shift;}}
+    ctx.putImageData(data,0,0);return true;
+  }
+  function paperSVG(svg){
+    svg.style.backgroundColor='#fff';svg.style.color='#334155';
+    const view=svg.viewBox?.baseVal;
+    for(const n of [svg,...svg.querySelectorAll('*')]){
+      n.style.backgroundColor='transparent';n.style.color='#334155';
+      const background=n.localName==='rect' && view?.width>0 && parseFloat(n.getAttribute('width'))>=view.width*.9 && parseFloat(n.getAttribute('height'))>=view.height*.9;
+      for(const property of ['fill','stroke']){
+        const value=n.style.getPropertyValue(property) || n.getAttribute(property),color=rgb(value);if(!color)continue;
+        const spread=Math.max(...color)-Math.min(...color),mean=color.reduce((a,b)=>a+b)/3;
+        let next='';
+        if(property==='fill' && background)next='#fff';
+        else if(n.matches('text,tspan') && property==='fill')next='#334155';
+        else if(spread<18)next=property==='stroke'?'#64748b':'#334155';
+        else if(mean>200)next=`rgb(${color.map(v=>Math.round(v*.65)).join(',')})`;
+        if(next)n.style.setProperty(property,next);
+      }
+    }
+    svg.style.backgroundColor='#fff';svg.dataset.crPaper='light';
+  }
+  async function preparePaper(root){
+    root.classList.add('cr-export-paper');
+    if(root.querySelector('img'))for(const n of root.querySelectorAll('.cr-export-control'))if(imageAction.test(n.textContent.trim()))n.remove();
+    const html=[root,...root.querySelectorAll('*')].filter(n=>n.namespaceURI!=='http://www.w3.org/2000/svg' && !n.closest('svg'));
+    for(const n of html){n.style.backgroundColor='#fff';n.style.color='#1f2937';n.style.removeProperty('font-size');n.style.removeProperty('line-height');if(parseFloat(n.style.borderTopWidth)>0)n.style.borderColor='#d9dee4';}
+    for(const table of root.querySelectorAll('table')){
+      table.classList.add('cr-export-table');table.removeAttribute('width');
+      for(const n of [table,...table.querySelectorAll('thead,tbody,tfoot,tr,th,td')]){
+        for(const p of ['width','min-width','max-width','height','min-height','max-height','white-space','display','flex-basis','padding','padding-top','padding-right','padding-bottom','padding-left'])n.style.removeProperty(p);
+        n.removeAttribute('width');n.removeAttribute('height');
+      }
+      // A web table's scrolling viewport and sticky columns have no printable
+      // equivalent. Let the page constrain columns and expand all rows instead.
+      for(let n=table.parentElement;n && n!==root && !n.matches('.content,.rich,[data-cr-ui]');n=n.parentElement){
+        n.classList.add('cr-export-table-frame');n.style.display='block';n.style.width='100%';n.style.minWidth='0';n.style.maxWidth='100%';n.style.height='auto';n.style.maxHeight='none';n.style.aspectRatio='auto';n.style.padding='0';
+      }
+    }
+    for(const svg of root.querySelectorAll('svg'))if(!svg.parentElement.closest('svg'))paperSVG(svg);
+    for(const image of root.querySelectorAll('img:not(.cr-export-icon)')){
+      let frame=image.closest('.cr-export-figure');
+      if(!frame)for(let n=image.parentElement;n && n!==root && !n.matches('.content,.rich,[data-cr-ui]');n=n.parentElement){
+        if(n.matches('figure') || (parseFloat(n.style.borderTopWidth)>0 && n.querySelectorAll('img').length===1 && !n.querySelector('h1,h2,h3,table,pre') && n.textContent.trim().length<350)){frame=n;break;}
+      }
+      if(frame){
+        frame.classList.add('cr-export-figure');frame.style.display='block';frame.style.height='auto';frame.style.aspectRatio='auto';
+        for(const n of frame.querySelectorAll('div,section,figure'))if(n.contains(image)){n.style.border='0';n.style.borderRadius='0';n.style.padding='0';}
+        for(let n=frame.parentElement;n && n!==root && !n.matches('.content,.rich,[data-cr-ui]');n=n.parentElement){
+          if(n.querySelectorAll('img').length!==1 || n.querySelector('h1,h2,h3,table,pre') || n.textContent.trim().length>=350)break;
+          n.style.border='0';n.style.borderRadius='0';n.style.padding='0';
+        }
+        if(image.alt && !frame.querySelector('figcaption') && !frame.textContent.includes(image.alt)){
+          const caption=document.createElement('figcaption');caption.textContent=image.alt;
+          const link=[...frame.querySelectorAll('a[href]')].find(a=>!a.contains(image));if(link){caption.append(document.createElement('br'),link);}
+          frame.append(caption);
+        }
+        for(const n of [...frame.querySelectorAll('div,section,span')].reverse())if(!n.textContent.trim() && !n.querySelector('img,svg,math'))n.remove();
+      }
+    }
+    fitMedia(root);
+    const charts=[...root.querySelectorAll('img')].filter(n=>(n.dataset.crMedia==='figure' || n.classList.contains('cr-export-chart')) && n.dataset.crPaper!=='light' && n.src.startsWith('data:image/png;base64,'));
+    await Promise.all(charts.map(async img=>{
+      try{
+        await Promise.race([img.decode(),new Promise((_,reject)=>setTimeout(()=>reject(new Error('image timeout')),4000))]);
+        const canvas=document.createElement('canvas');canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;canvas.getContext('2d').drawImage(img,0,0);if(lightenCanvas(canvas))img.src=canvas.toDataURL('image/png');img.dataset.crPaper='light';
+      }catch{}
+    }));
+    fitMedia(root);
   }
   const bodySelector='.markdown, .prose, [data-markdown-text-style="assistant-message"], [data-markdown-text-style="user-message"]';
   function messageBody(node) {
@@ -217,5 +325,5 @@
     return inline(doc.body).replace(/\n{3,}/g,'\n\n').trim();
   }
   function markdown(node){return markdownHTML(messageBody(node).innerHTML);}
-  window.ChatGPTReader = {sanitizeHTML, safeStyle, assetPath, safeUrl, mediaKind, sizeMedia, fitMedia, messageBody, messageNodes, roleOf, assistantNodes, userNodes, closestMessage, messageId, outline, markdown, markdownHTML};
+  window.ChatGPTReader = {sanitizeHTML, svgImage, safeStyle, assetPath, safeUrl, mediaKind, sizeMedia, fitMedia, imageAction, lightenCanvas, paperSVG, preparePaper, messageBody, messageNodes, roleOf, assistantNodes, userNodes, closestMessage, messageId, outline, markdown, markdownHTML};
 })();
