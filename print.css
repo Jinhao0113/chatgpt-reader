@@ -27,10 +27,13 @@ main { background:#fff; max-width:210mm; margin:28px auto; padding:20mm 18mm; bo
 .content figcaption a { display:inline!important; background:transparent!important; border:0!important; border-radius:0!important; padding:0!important; color:#475569!important; text-decoration:underline; overflow-wrap:anywhere; }
 .content .cr-export-control { background:#f8fafc!important; color:#334155!important; border-color:#d9dee4; }
 .content .cr-export-table-frame { overflow:visible!important; break-inside:auto; }
-.content table.cr-export-table { display:table!important; width:100%!important; max-width:100%!important; min-width:0!important; table-layout:fixed; border-collapse:collapse; font-size:10.5px; line-height:1.65; }
-.content .cr-export-table th,.content .cr-export-table td { display:table-cell!important; width:auto!important; min-width:0!important; max-width:none!important; height:auto!important; padding:7px 9px!important; white-space:normal!important; overflow-wrap:anywhere; word-break:normal; vertical-align:top; border:1px solid #d9dee4!important; }
+.content table.cr-export-table { display:table!important; width:100%!important; max-width:100%!important; min-width:0!important; table-layout:fixed; border-collapse:collapse; font-size:10.5px; line-height:1.4; }
+.content .cr-export-table th,.content .cr-export-table td { display:table-cell!important; width:auto!important; min-width:0!important; max-width:none!important; height:auto!important; padding:4px 8px!important; white-space:normal!important; overflow-wrap:anywhere; word-break:normal; vertical-align:top; border:1px solid #d9dee4!important; }
 .content .cr-export-table th { background:#f4f6f8!important; font-weight:650; }
 .content .cr-export-table th *,.content .cr-export-table td * { background:transparent!important; white-space:normal!important; overflow-wrap:anywhere; }
 .content .cr-export-table thead { display:table-header-group!important; }
 .content .cr-export-table tbody { display:table-row-group!important; }
 .content .cr-export-table tr { display:table-row!important; break-inside:avoid; }
+.content .cr-export-table :is(p,ul,ol,blockquote,pre) { margin-top:2px!important; margin-bottom:2px!important; }
+.content .cr-export-table :is(td,th) > :first-child { margin-top:0!important; }
+.content .cr-export-table :is(td,th) > :last-child { margin-bottom:0!important; }
